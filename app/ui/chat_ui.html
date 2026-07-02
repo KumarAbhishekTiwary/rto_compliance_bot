@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RTO Compliance Chat</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+  body { display: flex; height: 100vh; background: #f3f2f1; }
+
+  /* Sidebar */
+  #sidebar { width: 260px; background: #464775; color: #fff; display: flex; flex-direction: column; }
+  #sidebar-header { padding: 16px; font-size: 18px; font-weight: 700; border-bottom: 1px solid #5b5c8a; }
+  #user-info { padding: 10px 16px; font-size: 12px; color: #c8c6c4; border-bottom: 1px solid #5b5c8a; }
+  #channel-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .channel-item { padding: 8px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .channel-item:hover, .channel-item.active { background: #6264a7; }
+  .channel-item .ch-name { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600; }
+  .badge-active { background: #f8d22a; color: #333; }
+  .badge-resolved { background: #92c353; color: #fff; }
+
+  /* Main */
+  #main { flex: 1; display: flex; flex-direction: column; }
+  #channel-header { background: #fff; padding: 12px 20px; border-bottom: 1px solid #e1dfdd; display: flex; align-items: center; gap: 12px; }
+  #channel-title { font-size: 16px; font-weight: 600; }
+  #violation-banner { padding: 8px 20px; font-size: 13px; font-weight: 500; display: none; }
+  .banner-open { background: #fff4ce; color: #7a5c00; border-bottom: 2px solid #f8d22a; }
+  .banner-resolved { background: #dff6dd; color: #1e6e1e; border-bottom: 2px solid #92c353; }
+
+  #messages { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { display: flex; gap: 10px; align-items: flex-start; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; flex-shrink: 0; }
+  .av-employee { background: #e97548; }
+  .av-rm        { background: #0078d4; }
+  .av-slm       { background: #8764b8; }
+  .av-hr        { background: #038387; }
+  .av-bot       { background: #6264a7; }
+  .msg-content { background: #fff; border-radius: 8px; padding: 8px 12px; max-width: 70%; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .msg-meta { font-size: 11px; color: #888; margin-bottom: 4px; }
+  .msg-body { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .verdict-sat { color: #1e6e1e; font-weight: 600; }
+  .verdict-unsat { color: #a4262c; font-weight: 600; }
+
+  #composer { background: #fff; border-top: 1px solid #e1dfdd; padding: 12px 20px; display: flex; gap: 10px; }
+  #msg-input { flex: 1; border: 1px solid #c8c6c4; border-radius: 6px; padding: 8px 12px; font-size: 14px; resize: none; height: 40px; max-height: 120px; overflow-y: auto; }
+  #msg-input:focus { outline: none; border-color: #6264a7; }
+  #send-btn { background: #6264a7; color: #fff; border: none; border-radius: 6px; padding: 8px 18px; cursor: pointer; font-size: 14px; }
+  #send-btn:hover { background: #464775; }
+  #send-btn:disabled { background: #c8c6c4; cursor: not-allowed; }
+
+  /* Login modal */
+  #login-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  #login-box { background: #fff; border-radius: 12px; padding: 32px; width: 380px; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+  #login-box h2 { margin-bottom: 8px; color: #464775; }
+  #login-box p { color: #666; font-size: 13px; margin-bottom: 20px; }
+  #user-select { width: 100%; padding: 10px; border: 1px solid #c8c6c4; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+  #login-btn { width: 100%; background: #6264a7; color: #fff; border: none; border-radius: 6px; padding: 10px; font-size: 15px; cursor: pointer; }
+  #login-btn:hover { background: #464775; }
+
+  #no-channel { flex: 1; display: flex; align-items: center; justify-content: center; color: #888; font-size: 15px; }
+  #placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: #888; }
+  #placeholder h3 { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Login Modal -->
+<div id="login-modal">
+  <div id="login-box">
+    <h2>RTO Compliance Chat</h2>
+    <p>Select your account to continue</p>
+    <select id="user-select"><option value="">Loading users...</option></select>
+    <button id="login-btn" onclick="doLogin()">Sign In</button>
+  </div>
+</div>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div id="sidebar-header">💬 Compliance Chat</div>
+  <div id="user-info">Not signed in</div>
+  <div id="channel-list"></div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="channel-header" style="display:none">
+    <div id="channel-title">Select a channel</div>
+    <div id="header-badge"></div>
+  </div>
+  <div id="violation-banner"></div>
+  <div id="placeholder">
+    <h3>Select a channel to start</h3>
+    <p>Channels appear after a compliance check is triggered</p>
+  </div>
+  <div id="messages" style="display:none"></div>
+  <div id="composer" style="display:none">
+    <textarea id="msg-input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)"></textarea>
+    <button id="send-btn" onclick="sendMessage()">Send</button>
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentUser = null;
+let currentChannel = null;
+let pollTimer = null;
+let lastMsgCount = 0;
+
+// Load users into login dropdown
+async function loadUsers() {
+  const res = await fetch(`${API}/api/v1/chat/users`);
+  const users = await res.json();
+  const sel = document.getElementById('user-select');
+  sel.innerHTML = '<option value="">-- Select your account --</option>';
+  users.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = JSON.stringify(u);
+    opt.textContent = `${u.name || u.email} (${u.role})`;
+    sel.appendChild(opt);
+  });
+}
+
+function doLogin() {
+  const sel = document.getElementById('user-select');
+  if (!sel.value) return alert('Please select a user');
+  currentUser = JSON.parse(sel.value);
+  document.getElementById('login-modal').style.display = 'none';
+  document.getElementById('user-info').textContent = `${currentUser.name || currentUser.email} · ${currentUser.role}`;
+  loadChannels();
+  setInterval(loadChannels, 2000);
+}
+
+async function loadChannels() {
+  if (!currentUser) return;
+  const res = await fetch(`${API}/api/v1/chat/channels?user_email=${encodeURIComponent(currentUser.email)}`);
+  const channels = await res.json();
+  const list = document.getElementById('channel-list');
+  list.innerHTML = '';
+  channels.forEach(ch => {
+    const div = document.createElement('div');
+    div.className = 'channel-item' + (currentChannel === ch.channel_ref ? ' active' : '');
+    div.onclick = () => openChannel(ch.channel_ref);
+    const badge = ch.status === 'RESOLVED'
+      ? '<span class="badge badge-resolved">RESOLVED</span>'
+      : '<span class="badge badge-active">ACTIVE</span>';
+    div.innerHTML = `<span class="ch-name"># ${ch.channel_ref}</span>${badge}`;
+    list.appendChild(div);
+  });
+}
+
+async function openChannel(channelRef) {
+  currentChannel = channelRef;
+  lastMsgCount = 0;
+  if (pollTimer) clearInterval(pollTimer);
+
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('channel-header').style.display = 'flex';
+  document.getElementById('messages').style.display = 'flex';
+  document.getElementById('composer').style.display = 'flex';
+  document.getElementById('channel-title').textContent = channelRef;
+
+  await loadChannelInfo(channelRef);
+  await loadMessages(channelRef);
+  loadChannels();
+
+  pollTimer = setInterval(async () => {
+    await loadMessages(channelRef);
+    await loadChannelInfo(channelRef);
+  }, 2000);
+}
+
+async function loadChannelInfo(channelRef) {
+  const res = await fetch(`${API}/api/v1/chat/channels/${channelRef}/info`);
+  const info = await res.json();
+  const banner = document.getElementById('violation-banner');
+  const headerBadge = document.getElementById('header-badge');
+
+  if (info.violation) {
+    const v = info.violation;
+    banner.style.display = 'block';
+    if (info.status === 'RESOLVED') {
+      banner.className = 'banner-resolved';
+      banner.textContent = `✅ RESOLVED — ${v.days_present}/${v.days_required} days (${v.policy_type})`;
+      headerBadge.innerHTML = '<span class="badge badge-resolved">RESOLVED</span>';
+    } else {
+      banner.className = 'banner-open';
+      banner.textContent = `⚠️ OPEN VIOLATION — ${v.days_present}/${v.days_required} required days (${v.policy_type})`;
+      headerBadge.innerHTML = '<span class="badge badge-active">ACTIVE</span>';
+    }
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+async function loadMessages(channelRef) {
+  const res = await fetch(`${API}/api/v1/chat/channels/${channelRef}/messages`);
+  const msgs = await res.json();
+  if (msgs.length === lastMsgCount) return;
+  lastMsgCount = msgs.length;
+
+  const container = document.getElementById('messages');
+  container.innerHTML = '';
+  msgs.forEach(m => {
+    const role = (m.sender_role || 'BOT').toUpperCase();
+    const avClass = {EMPLOYEE:'av-employee', RM:'av-rm', SLM:'av-slm', HR:'av-hr', BOT:'av-bot'}[role] || 'av-bot';
+    const initials = m.sender_email.substring(0, 2).toUpperCase();
+    const time = new Date(m.created_at + 'Z').toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+    let bodyClass = 'msg-body';
+    if (m.verdict === 'SATISFACTORY') bodyClass += ' verdict-sat';
+    else if (m.verdict === 'UNSATISFACTORY') bodyClass += ' verdict-unsat';
+
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.innerHTML = `
+      <div class="avatar ${avClass}">${initials}</div>
+      <div class="msg-content">
+        <div class="msg-meta">${m.sender_email} · ${role} · ${time}</div>
+        <div class="${bodyClass}">${escapeHtml(m.body)}</div>
+      </div>`;
+    container.appendChild(div);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const body = input.value.trim();
+  if (!body || !currentChannel || !currentUser) return;
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  input.value = '';
+
+  await fetch(`${API}/api/v1/chat/send`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      channel_ref: currentChannel,
+      sender_email: currentUser.email,
+      sender_role: currentUser.role,
+      body: body,
+    }),
+  });
+  btn.disabled = false;
+  await loadMessages(currentChannel);
+}
+
+document.getElementById('msg-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+function escapeHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+loadUsers();
+</script>
+</body>
+</html>

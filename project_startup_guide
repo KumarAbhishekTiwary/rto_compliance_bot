@@ -1,0 +1,29 @@
+Run the Flow
+ 
+# 1. Re-init DB with new tables
+rm rto.db
+python scripts/init_db.py
+python scripts/seed_data.py
+ 
+# 2. Start backend
+uvicorn app.api.main:app --reload --port 8000
+ 
+# 3. Open the Teams-like UI
+# http://localhost:8000/api/v1/chat
+ 
+# 4. Trigger a compliance check (in another terminal)
+curl -X POST http://localhost:8000/api/v1/compliance/check \
+  -H "Content-Type: application/json" \
+  -d '{"emp_sapid":"E002","policy_type":"WEEKLY"}'
+ 
+ 
+🎬 Test the Full Flow
+ 
+Open 3 browser tabs at http://localhost:8000/api/v1/chat
+Tab A: Sign in as bob@example.com (EMPLOYEE)
+Tab B: Sign in as rm1@example.com (RM)
+Tab C: Sign in as slm1@example.com (SLM)
+Trigger compliance check for E002 (Bob) — new chat appears in all 3 tabs
+As RM (Tab B), type:
+ 
+"Discussed with Bob - he was on approved client visit to NY last week. Ticket: ABC-123"

@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+ 
+# Environment variables
+.env
+.venv
+env/
+venv/
+ENV/
+VENV/
+ 
+# Notebooks
+*.ipynb
+ 
+# Temporary and log files
+*.log
+temp/
+ 
+# Data and artifacts (can be more specific)
+*.pkl
+*.db
+*.pdf
+*.docx
+*.json
+*.xlsx
