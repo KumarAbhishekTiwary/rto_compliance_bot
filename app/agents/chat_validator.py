@@ -1,47 +1,44 @@
-"""Chat Validator Agent — LLM judges RM reply in the chat channel."""
-import os
-import json
+"""Chat Validator Agent (LLM) - judges RM justification in Slack/Teams chat."""
+from agents import Agent
+from app.config import settings
+from app.agents.schemas import ValidationVerdict
 
+INSTRUCTIONS = """
+You are the Chat Validator Agent for an RTO Compliance Bot.
 
-async def validate_chat_reply(channel_ref: str, rm_message: str, context: dict = None) -> dict:
-    try:
-        from agents import Agent, Runner
-        import asyncio
+You will be given a chat conversation between an RM (reporting manager), an employee,
+and the compliance bot. Your job is to decide if the RM has provided a SATISFACTORY
+justification for the employee's non-compliance.
 
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        agent = Agent(
-            name="ChatValidator",
-            model=model,
-            instructions="""You are an RTO compliance validator.
-Given an RM's justification message for an employee's office attendance violation,
-decide if it is SATISFACTORY or UNSATISFACTORY.
+Return a ValidationVerdict JSON with:
+- verdict: "SATISFACTORY" | "UNSATISFACTORY" | "PENDING"
+- justification: extracted reason text (or empty string)
+- confidence: 0.0 to 1.0
+- reasoning: 1-2 sentences explaining the verdict
 
-SATISFACTORY: specific reason given (client visit, approved WFH, medical, travel with ticket/reference).
-UNSATISFACTORY: vague, no reason, or just acknowledgement.
+SATISFACTORY criteria (ALL must be met):
+1. RM explicitly confirms they have discussed with the employee, OR provides a clear
+   acknowledgement of the issue.
+2. A clear business reason is given (examples: approved leave, client visit,
+   business travel, medical emergency, hospitalization, family emergency,
+   work-from-home approval).
+3. Confidence > 0.7.
 
-Respond ONLY with valid JSON:
-{"verdict": "SATISFACTORY" or "UNSATISFACTORY", "reason": "brief explanation"}""",
-        )
+UNSATISFACTORY criteria:
+- Vague responses ("will check", "ok noted") without justification.
+- Promises to address it later without specifics.
+- No business reason given.
 
-        prompt = f"RM message: {rm_message}"
-        if context:
-            prompt = f"Employee: {context.get('emp_name','')}, Violation: {context.get('summary','')}\n{prompt}"
+PENDING:
+- RM has not yet responded.
+- Conversation is ongoing without a decision.
 
-        result = await Runner.run(agent, prompt)
-        text = result.final_output.strip()
-        # Extract JSON
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        data = json.loads(text[start:end])
-        return {"channel_ref": channel_ref, **data}
+Be strict but fair. When in doubt, return PENDING.
+"""
 
-    except Exception as e:
-        # Fallback: keyword-based heuristic
-        lower = rm_message.lower()
-        keywords = ["approved", "client", "visit", "medical", "travel", "ticket", "jira", "wfh", "leave"]
-        verdict = "SATISFACTORY" if any(k in lower for k in keywords) else "UNSATISFACTORY"
-        return {
-            "channel_ref": channel_ref,
-            "verdict": verdict,
-            "reason": f"Heuristic fallback (LLM unavailable: {str(e)[:60]})",
-        }
+chat_validator_agent = Agent(
+    name="Chat Validator Agent",
+    instructions=INSTRUCTIONS,
+    model=settings.OPENAI_MODEL,
+    output_type=ValidationVerdict,
+)
