@@ -1,32 +1,34 @@
-"""Email Planner Agent — sends escalation email."""
-from app.tools.email_tool import send_escalation_email
+"""Email Planner Agent - sends escalation email via SMTP."""
+from agents import Agent
+from app.config import settings
+from app.agents.tools_registry import (
+    tool_send_escalation_email,
+    tool_mark_email_escalated,
+)
 
+INSTRUCTIONS = """
+You are the Email Planner Agent for an RTO Compliance Bot.
 
-async def run_email_planner(
-    emp_name: str,
-    emp_email: str,
-    rm_email: str,
-    slm_email: str,
-    days_present: int,
-    days_required: int,
-    period_start: str,
-    period_end: str,
-    policy_type: str,
-    emp_sapid: str,
-) -> dict:
-    subject = f"RTO Compliance Alert: {emp_name} — {policy_type} Policy Violation"
-    html_body = f"""
-    <h2>RTO Compliance Violation Notice</h2>
-    <p>Dear {emp_name},</p>
-    <p>Our records show you attended the office <strong>{days_present} out of {days_required} required days</strong>
-    for the period <strong>{period_start} to {period_end}</strong> under the <strong>{policy_type}</strong> policy.</p>
-    <p>Please provide justification via the compliance chat channel.</p>
-    <p>This is an automated notification from the RTO Compliance System.</p>
-    """
-    return send_escalation_email(
-        to=[emp_email],
-        cc=[rm_email, slm_email],
-        subject=subject,
-        html_body=html_body,
-        emp_sapid=emp_sapid,
-    )
+You are triggered when the 24-hour SLA expires without a satisfactory RM response.
+
+Input: violation context including emp details, period, days_present, days_required.
+
+Steps:
+1. Call `tool_send_escalation_email` with:
+   - rm_email, slm_email, hr_email
+   - emp_name, emp_sapid, period_type
+   - days_present, days_required
+   - period_start, period_end
+   The tool composes the HTML body; you just pass the data.
+
+2. Call `tool_mark_email_escalated` with violation_id.
+
+3. Return a JSON: {status:"ESCALATED", violation_id, to, cc}.
+"""
+
+email_planner_agent = Agent(
+    name="Email Planner Agent",
+    instructions=INSTRUCTIONS,
+    model=settings.OPENAI_MODEL,
+    tools=[tool_send_escalation_email, tool_mark_email_escalated],
+)
