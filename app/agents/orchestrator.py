@@ -1,76 +1,124 @@
-"""Orchestrator — end-to-end compliance check pipeline."""
-from app.agents.retrieval import run_retrieval
-from app.agents.meeting_planner import run_meeting_planner
-from app.agents.email_planner import run_email_planner
-from app.tools.violation import create_violation
+"""
+Orchestrator - runs the end-to-end compliance pipeline for one employee.
 
+This is the main entry point used by the scheduler and webhooks. We use direct
+agent invocations (Runner) rather than LLM-decided handoffs so the workflow is
+deterministic and audit-friendly.
+"""
+import asyncio
+import json
+from agents import Runner
 
-async def run_compliance_check(emp_sapid: str, policy_type: str) -> dict:
-    # Step 1: Fetch attendance
-    summary = await run_retrieval(emp_sapid, policy_type)
-    if "error" in summary:
-        return summary
+from app.agents.retrieval import retrieval_agent
+from app.agents.meeting_planner import meeting_planner_agent
+from app.agents.chat_validator import chat_validator_agent
+from app.agents.email_planner import email_planner_agent
+from app.agents.mail_validator import mail_validator_agent
+from app.agents.reset import reset_agent
+from app.tools.violation import log_audit, get_violation
 
-    if summary["compliant"]:
-        return {
-            "emp_sapid": emp_sapid,
-            "status": "COMPLIANT",
-            "days_present": summary["days_present"],
-            "days_required": summary["days_required"],
-        }
+async def run_compliance_check(emp_sapid: str, policy_type: str = "") -> dict:
+    """
+    End-to-end pipeline:
+      Retrieval → (if non-compliant) Meeting Planner → Slack group + SLA timer.
+    Chat / Mail validators are invoked from webhooks (separate flow).
+    """
+    log_audit(emp_sapid, "CHECK_STARTED", "SCHEDULER",
+              f"policy_type={policy_type}")
 
-    # Step 2: Create violation record
-    v = create_violation(
-        emp_sapid=emp_sapid,
-        policy_type=policy_type,
-        period_start=summary["period_start"],
-        period_end=summary["period_end"],
-        days_present=summary["days_present"],
-        days_required=summary["days_required"],
-    )
-    violation_id = v["violation_id"]
+    # 1. Retrieval
+    input_str = json.dumps({"emp_sapid": emp_sapid, "policy_type": policy_type})
+    result = await Runner.run(retrieval_agent, input_str)
+    compliance = result.final_output  # ComplianceResult Pydantic model
 
-    violation_summary = (
-        f"⚠️ RTO Compliance Violation\n"
-        f"Employee: {summary['name']} ({emp_sapid})\n"
-        f"Period: {summary['period_start']} to {summary['period_end']}\n"
-        f"Attended: {summary['days_present']}/{summary['days_required']} required days\n"
-        f"Policy: {policy_type}\n\n"
-        f"Please provide justification for the missed days."
-    )
+    if compliance.is_compliant:
+        log_audit(emp_sapid, "COMPLIANT", "SYSTEM",
+                  f"days={compliance.days_present}/{compliance.days_required}")
+        return {"emp_sapid": emp_sapid, "status": "COMPLIANT",
+                "days_present": compliance.days_present,
+                "days_required": compliance.days_required}
 
-    # Step 3: Create in-app channel
-    channel_result = await run_meeting_planner(
-        emp_email=summary["email"],
-        rm_email=summary["rm_email"],
-        slm_email=summary["slm_email"],
-        emp_name=summary["name"],
-        violation_summary=violation_summary,
-        violation_id=violation_id,
-        emp_sapid=emp_sapid,
-    )
-
-    # Step 4: Send email notification
-    email_result = await run_email_planner(
-        emp_name=summary["name"],
-        emp_email=summary["email"],
-        rm_email=summary["rm_email"],
-        slm_email=summary["slm_email"],
-        days_present=summary["days_present"],
-        days_required=summary["days_required"],
-        period_start=summary["period_start"],
-        period_end=summary["period_end"],
-        policy_type=policy_type,
-        emp_sapid=emp_sapid,
-    )
+    # 2. Non-compliant → Meeting Planner
+    mp_input = compliance.model_dump_json()
+    mp_result = await Runner.run(meeting_planner_agent, mp_input)
+    log_audit(emp_sapid, "TEAMS_NOTIFIED", "SYSTEM", str(mp_result.final_output))
 
     return {
         "emp_sapid": emp_sapid,
         "status": "VIOLATION_OPENED",
-        "violation_id": violation_id,
-        "channel_ref": channel_result.get("channel_ref"),
-        "days_present": summary["days_present"],
-        "days_required": summary["days_required"],
-        "email_status": email_result.get("status"),
-        "already_existed": not v.get("created", True),
+        "compliance": compliance.model_dump(),
+        "meeting_planner": str(mp_result.final_output),
     }
+
+async def validate_chat_reply(violation_id: str, chat_history: str) -> dict:
+    """Called by Slack webhook when a new RM message arrives."""
+    result = await Runner.run(chat_validator_agent, chat_history)
+    verdict = result.final_output  # ValidationVerdict
+
+    if verdict.verdict == "SATISFACTORY" and verdict.confidence >= 0.7:
+        reset_input = json.dumps({
+            "violation_id": violation_id,
+            "justification": verdict.justification,
+            "channel": "TEAMS",
+            "confidence": verdict.confidence,
+        })
+        await Runner.run(reset_agent, reset_input)
+        return {"verdict": "SATISFACTORY", "action": "RESET",
+                "violation_id": violation_id}
+
+    return {"verdict": verdict.verdict,
+            "confidence": verdict.confidence,
+            "reasoning": verdict.reasoning,
+            "violation_id": violation_id}
+
+async def trigger_email_escalation(violation_id: str) -> dict:
+    """Called by SLA timer when 24h elapses without satisfactory chat verdict."""
+    vio = get_violation(violation_id)
+    if not vio:
+        return {"error": f"Violation {violation_id} not found"}
+
+    # Get employee details for the email
+    from app.tools.attendance import fetch_attendance_summary
+    emp = fetch_attendance_summary(vio["emp_sapid"], vio["period_type"])
+
+    input_data = {
+        "violation_id": violation_id,
+        "rm_email": emp["rm_email"],
+        "slm_email": emp["slm_email"],
+        "hr_email": emp["hr_email"],
+        "emp_name": emp["emp_name"],
+        "emp_sapid": emp["emp_sapid"],
+        "period_type": vio["period_type"],
+        "period_start": vio["period_start"],
+        "period_end": vio["period_end"],
+        "days_present": vio["days_present"],
+        "days_required": vio["days_required"],
+    }
+    result = await Runner.run(email_planner_agent, json.dumps(input_data))
+    log_audit(emp["emp_sapid"], "EMAIL_ESCALATED", "SYSTEM",
+              f"violation_id={violation_id}")
+    return {"violation_id": violation_id, "status": "EMAIL_ESCALATED",
+            "result": str(result.final_output)}
+
+async def validate_mail_reply(violation_id: str, email_thread: str) -> dict:
+    """Called by IMAP poller when a new email reply arrives."""
+    result = await Runner.run(mail_validator_agent, email_thread)
+    verdict = result.final_output
+
+    if verdict.verdict == "SATISFACTORY" and verdict.confidence >= 0.7:
+        reset_input = json.dumps({
+            "violation_id": violation_id,
+            "justification": verdict.justification,
+            "channel": "EMAIL",
+            "confidence": verdict.confidence,
+        })
+        await Runner.run(reset_agent, reset_input)
+        return {"verdict": "SATISFACTORY", "action": "RESET"}
+
+    return {"verdict": verdict.verdict,
+            "confidence": verdict.confidence,
+            "reasoning": verdict.reasoning}
+
+# Sync wrappers (for scheduler / non-async callers)
+def run_check_sync(emp_sapid: str, policy_type: str = "") -> dict:
+    return asyncio.run(run_compliance_check(emp_sapid, policy_type))
