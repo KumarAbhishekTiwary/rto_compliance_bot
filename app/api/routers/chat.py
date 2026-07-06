@@ -1,95 +1,142 @@
+"""FastAPI router for the in-app chat (Teams-like UI backend)."""
 import asyncio
-import os
-from pathlib import Path
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+import json
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from pathlib import Path
+
 from app.tools.chat_tool import (
-    list_channels_for_user,
-    get_channel_messages,
-    get_channel_info,
-    post_message,
-    list_all_users,
+    post_message, get_channel_messages, list_channels_for_user,
+    get_channel_members, get_channel_info, mark_channel_resolved,
+    BOT_EMAIL, BOT_NAME,
 )
-from app.agents.chat_validator import validate_chat_reply
-from app.agents.reset import run_reset
+from app.tools.violation import log_communication
+from app.agents.orchestrator import validate_chat_reply
+from app.db.database import db_cursor
 
 router = APIRouter()
 
-UI_PATH = Path(__file__).parent.parent.parent / "ui" / "chat_ui.html"
 
-
-@router.get("/chat")
-def serve_chat_ui():
-    if not UI_PATH.exists():
-        raise HTTPException(status_code=404, detail="chat_ui.html not found")
-    return FileResponse(str(UI_PATH), media_type="text/html")
-
-
-@router.get("/chat/users")
-def get_users():
-    return list_all_users()
+class SendMessageRequest(BaseModel):
+    channel_id: str
+    sender_email: str
+    content: str
 
 
 @router.get("/chat/channels")
-def get_channels(user_email: str):
-    return list_channels_for_user(user_email)
+def list_channels(user_email: str):
+    return {"channels": list_channels_for_user(user_email)}
 
 
-@router.get("/chat/channels/{channel_ref}/messages")
-def get_messages(channel_ref: str):
-    return get_channel_messages(channel_ref)
+@router.get("/chat/channels/{channel_id}/messages")
+def get_messages(channel_id: str, since: str = None):
+    msgs = get_channel_messages(channel_id, since)
+    return {"messages": msgs}
 
 
-@router.get("/chat/channels/{channel_ref}/info")
-def get_info(channel_ref: str):
-    info = get_channel_info(channel_ref)
+@router.get("/chat/channels/{channel_id}/info")
+def channel_info(channel_id: str):
+    info = get_channel_info(channel_id)
     if not info:
-        raise HTTPException(status_code=404, detail="Channel not found")
-    return info
-
-
-class SendMessageRequest(BaseModel):
-    channel_ref: str
-    sender_email: str
-    sender_role: str
-    body: str
+        raise HTTPException(404, "Channel not found")
+    members = get_channel_members(channel_id)
+    violation = None
+    with db_cursor() as cur:
+        cur.execute("SELECT * FROM violations WHERE slack_channel_id = ?",
+                    (channel_id,))
+        row = cur.fetchone()
+        if row:
+            violation = dict(row)
+    return {"channel": info, "members": members, "violation": violation}
 
 
 @router.post("/chat/send")
-async def send_message(req: SendMessageRequest, background_tasks: BackgroundTasks):
-    post_message(req.channel_ref, req.sender_email, req.sender_role, req.body)
+async def send_message(req: SendMessageRequest):
+    result = post_message(req.channel_id, req.sender_email, req.content)
 
-    # If RM sends a message, trigger Chat Validator in background
-    if req.sender_role.upper() == "RM":
-        background_tasks.add_task(_validate_and_respond, req.channel_ref, req.body)
+    if result["sender_role"] in ("RM", "SLM"):
+        violation = None
+        with db_cursor() as cur:
+            cur.execute("SELECT * FROM violations WHERE slack_channel_id = ?",
+                        (req.channel_id,))
+            row = cur.fetchone()
+            if row:
+                violation = dict(row)
 
-    return {"status": "sent"}
+        if violation and violation["status"] in ("OPEN", "TEAMS_NOTIFIED", "EMAIL_ESCALATED"):
+            msgs = get_channel_messages(req.channel_id)
+            chat_history = "\n".join([
+                f"{m['sender_name']} ({m['sender_role']}): {m['content']}"
+                for m in msgs
+            ])
+            asyncio.create_task(_validate_and_respond(
+                violation["violation_id"], req.channel_id, chat_history
+            ))
+
+    return result
 
 
-async def _validate_and_respond(channel_ref: str, rm_message: str):
+async def _validate_and_respond(violation_id: str, channel_id: str,
+                                chat_history: str):
     try:
-        info = get_channel_info(channel_ref)
-        context = {}
-        if info.get("violation"):
-            v = info["violation"]
-            context = {
-                "emp_name": info.get("emp_sapid", ""),
-                "summary": f"present={v.get('days_present')}/{v.get('days_required')} days",
-            }
+        result = await validate_chat_reply(violation_id, chat_history)
+        verdict = result.get("verdict", "PENDING")
 
-        result = await validate_chat_reply(channel_ref, rm_message, context)
-        verdict = result.get("verdict", "UNSATISFACTORY")
-        reason = result.get("reason", "")
-
-        if verdict == "SATISFACTORY":
-            bot_msg = f"✅ SATISFACTORY — {reason}\nViolation will be marked RESET."
-            post_message(channel_ref, "bot@system", "BOT", bot_msg, verdict="SATISFACTORY")
-            # Reset violation
-            if info.get("violation"):
-                await run_reset(info["violation"]["id"], channel_ref)
+        if verdict == "SATISFACTORY" and result.get("action") == "RESET":
+            bot_msg = (
+                "✅ Thank you. Your justification has been accepted.\n"
+                "This violation has been marked as RESET. "
+                "Tracking will resume on the next scheduled cycle."
+            )
+            metadata = {"verdict": "SATISFACTORY", "action": "RESET"}
+            mark_channel_resolved(channel_id)
+        elif verdict == "UNSATISFACTORY":
+            bot_msg = (
+                "⚠️ The justification does not meet our criteria. "
+                "Please provide more specific details (business reason, dates, "
+                "approval references). If unresolved within 24 hours, this will "
+                "be escalated via email to SLM and HR."
+            )
+            metadata = {"verdict": "UNSATISFACTORY",
+                        "confidence": result.get("confidence")}
         else:
-            bot_msg = f"❌ UNSATISFACTORY — {reason}\nPlease provide more specific details."
-            post_message(channel_ref, "bot@system", "BOT", bot_msg, verdict="UNSATISFACTORY")
+            bot_msg = "⏳ Acknowledged. Awaiting more information to make a decision."
+            metadata = {"verdict": "PENDING"}
+
+        post_message(channel_id, BOT_EMAIL, bot_msg,
+                     message_type="VERDICT", metadata=metadata)
+        log_communication(violation_id, "TEAMS", "OUTBOUND", BOT_EMAIL,
+                          bot_msg, verdict=verdict)
     except Exception as e:
-        post_message(channel_ref, "bot@system", "BOT", f"⚠️ Validation error: {str(e)[:100]}")
+        post_message(channel_id, BOT_EMAIL,
+                     f"⚠️ Internal error: {str(e)[:200]}",
+                     message_type="SYSTEM")
+
+
+@router.get("/chat/users")
+def list_all_users():
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT DISTINCT emp_email as email, emp_name as name, 'EMPLOYEE' as role
+            FROM employees WHERE emp_email IS NOT NULL
+            UNION
+            SELECT DISTINCT rm_email as email, 'Reporting Manager' as name, 'RM' as role
+            FROM employees WHERE rm_email IS NOT NULL
+            UNION
+            SELECT DISTINCT slm_email as email, 'Senior Line Manager' as name, 'SLM' as role
+            FROM employees WHERE slm_email IS NOT NULL
+            UNION
+            SELECT DISTINCT hr_email as email, 'HR' as name, 'HR' as role
+            FROM employees WHERE hr_email IS NOT NULL
+        """)
+        users = [dict(r) for r in cur.fetchall()]
+    return {"users": users}
+
+
+@router.get("/chat", response_class=HTMLResponse)
+def chat_ui():
+    html_path = Path(__file__).resolve().parents[3] / "app" / "ui" / "chat_ui.html"
+    if not html_path.exists():
+        raise HTTPException(404, f"UI file not found at {html_path}")
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
