@@ -1,67 +1,94 @@
-import os
+"""Seed sample employees, attendance, and authorized users for testing."""
 import sys
+import uuid
+from pathlib import Path
+from datetime import datetime, timedelta
 import random
-from datetime import date, timedelta
 
-sys.stdout.reconfigure(encoding='utf-8')
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from app.db.database import get_connection
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.db.database import db_cursor
 
 EMPLOYEES = [
-    ("E001", "Alice Johnson",  "alice@example.com",  "rm1@example.com", "slm1@example.com", "WEEKLY",  3),
-    ("E002", "Bob Smith",      "bob@example.com",    "rm1@example.com", "slm1@example.com", "WEEKLY",  3),
-    ("E003", "Carol White",    "carol@example.com",  "rm2@example.com", "slm1@example.com", "MONTHLY", 12),
-    ("E004", "David Brown",    "david@example.com",  "rm2@example.com", "slm2@example.com", "MONTHLY", 12),
-    ("E005", "Eve Davis",      "eve@example.com",    "rm1@example.com", "slm2@example.com", "WEEKLY",  3),
-    ("E006", "Frank Miller",   "frank@example.com",  "rm2@example.com", "slm2@example.com", "WEEKLY",  3),
+    # (sapid, name, email, rm_email, slm_email, hr_email, policy)
+    ("E001", "Alice Johnson",  "alice@example.com",  "rm1@example.com", "slm1@example.com", "hr@example.com", "WEEKLY"),
+    ("E002", "Bob Smith",      "bob@example.com",    "rm1@example.com", "slm1@example.com", "hr@example.com", "WEEKLY"),
+    ("E003", "Carol Davis",    "carol@example.com",  "rm2@example.com", "slm1@example.com", "hr@example.com", "MONTHLY"),
+    ("E004", "David Miller",   "david@example.com",  "rm2@example.com", "slm1@example.com", "hr@example.com", "MONTHLY"),
+    ("E005", "Eve Wilson",     "eve@example.com",    "rm1@example.com", "slm1@example.com", "hr@example.com", "WEEKLY"),
+    ("E006", "Frank Brown",    "frank@example.com",  "rm2@example.com", "slm1@example.com", "hr@example.com", "EXEMPT"),
 ]
 
 AUTHORIZED_USERS = [
-    ("hr@example.com",         "HR"),
-    ("leadership@example.com", "LEADERSHIP"),
-    ("admin@example.com",      "ADMIN"),
+    ("U001", "hr@example.com", "HR"),
+    ("U002", "leadership@example.com", "LEADERSHIP"),
+    ("U003", "admin@example.com", "ADMIN"),
 ]
 
-def seed():
-    conn = get_connection()
-
-    # Employees
-    conn.executemany(
-        "INSERT OR IGNORE INTO employees (emp_sapid,name,email,rm_email,slm_email,policy_type,required_days) VALUES (?,?,?,?,?,?,?)",
-        EMPLOYEES
-    )
+def seed_employees():
+    with db_cursor() as cur:
+        for emp in EMPLOYEES:
+            cur.execute("""
+                INSERT OR REPLACE INTO employees
+                (emp_sapid, emp_name, emp_email, rm_email, slm_email, hr_email, policy_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, emp)
     print(f"✅ Seeded {len(EMPLOYEES)} employees")
 
-    # Attendance — last 35 days, compliant pattern for E001/E003/E005, non-compliant for E002/E004/E006
-    today = date.today()
-    rows = []
-    for emp_sapid, _, _, _, _, policy, req in EMPLOYEES:
-        compliant = emp_sapid in ("E001", "E003", "E005")
-        for i in range(35):
-            d = today - timedelta(days=i)
-            if d.weekday() >= 5:  # skip weekends
-                continue
-            if compliant:
-                present = 1 if random.random() < 0.85 else 0
+def seed_attendance():
+    """Generate attendance for last 35 days. Some employees will be non-compliant."""
+    today = datetime.now().date()
+    with db_cursor() as cur:
+        # Clear old
+        cur.execute("DELETE FROM attendance")
+
+        for sapid, name, *_ in EMPLOYEES:
+            # Compliance probability — make some non-compliant
+            if sapid == "E001":   # Compliant
+                attend_prob = 0.85
+            elif sapid == "E002": # Non-compliant weekly (will trigger)
+                attend_prob = 0.30
+            elif sapid == "E003": # Compliant monthly
+                attend_prob = 0.75
+            elif sapid == "E004": # Non-compliant monthly (will trigger)
+                attend_prob = 0.35
+            elif sapid == "E005": # Borderline weekly
+                attend_prob = 0.55
             else:
-                present = 1 if random.random() < 0.35 else 0
-            rows.append((emp_sapid, d.isoformat(), present))
-    conn.executemany(
-        "INSERT OR IGNORE INTO attendance (emp_sapid, date, present) VALUES (?,?,?)",
-        rows
-    )
+                attend_prob = 0.90
+
+            for d in range(35):
+                date = today - timedelta(days=d)
+                # Skip weekends
+                if date.weekday() >= 5:
+                    continue
+                present = 1 if random.random() < attend_prob else 0
+                hours = round(random.uniform(7.5, 9.5), 2) if present else 0.0
+                cur.execute("""
+                    INSERT OR IGNORE INTO attendance
+                    (emp_sapid, date, acs_hours, is_present, source)
+                    VALUES (?, ?, ?, ?, 'SEED')
+                """, (sapid, date, hours, present))
     print(f"✅ Seeded attendance for {len(EMPLOYEES)} employees (last 35 days)")
 
-    # Authorized users
-    conn.executemany(
-        "INSERT OR IGNORE INTO authorized_users (email, role) VALUES (?,?)",
-        AUTHORIZED_USERS
-    )
+def seed_authorized_users():
+    with db_cursor() as cur:
+        for user in AUTHORIZED_USERS:
+            cur.execute("""
+                INSERT OR REPLACE INTO authorized_users
+                (user_id, user_email, user_role)
+                VALUES (?, ?, ?)
+            """, user)
     print(f"✅ Seeded {len(AUTHORIZED_USERS)} authorized users")
 
-    conn.commit()
-    conn.close()
-
 if __name__ == "__main__":
-    seed()
+    random.seed(42)
+    seed_employees()
+    seed_attendance()
+    seed_authorized_users()
+    print("\n🎉 Seed complete! Run: python -c \"from scripts.seed_data import show_summary; show_summary()\"")
+
+def show_summary():
+    with db_cursor() as cur:
+        cur.execute("SELECT emp_sapid, emp_name, policy_type FROM employees")
+        for row in cur.fetchall():
+            print(dict(row))
