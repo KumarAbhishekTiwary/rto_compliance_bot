@@ -1,39 +1,37 @@
-"""Mail Validator Agent — LLM judges email reply."""
-import os
-import json
+"""Mail Validator Agent (LLM) - judges email reply justification."""
+from agents import Agent
+from app.config import settings
+from app.agents.schemas import ValidationVerdict
 
+INSTRUCTIONS = """
+You are the Mail Validator Agent for an RTO Compliance Bot.
 
-async def validate_email_reply(emp_sapid: str, reply_body: str) -> dict:
-    try:
-        from agents import Agent, Runner
+You receive an email thread (escalation + replies). Decide if the RM/SLM has
+provided a SATISFACTORY justification for the employee's non-compliance.
 
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        agent = Agent(
-            name="MailValidator",
-            model=model,
-            instructions="""You are an RTO compliance email validator.
-Given an employee's email reply to a compliance violation notice,
-decide if it is SATISFACTORY or UNSATISFACTORY.
+Apply the same verdict criteria as the Chat Validator:
 
-SATISFACTORY: specific reason with supporting details.
-UNSATISFACTORY: vague or no reason.
+SATISFACTORY:
+- Explicit acknowledgement of the issue
+- Clear business reason (approved leave, client visit, business travel,
+  medical, hospitalization, family emergency, WFH approval)
+- Confidence > 0.7
 
-Respond ONLY with valid JSON:
-{"verdict": "SATISFACTORY" or "UNSATISFACTORY", "reason": "brief explanation"}""",
-        )
-        result = await Runner.run(agent, f"Email reply: {reply_body}")
-        text = result.final_output.strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        data = json.loads(text[start:end])
-        return {"emp_sapid": emp_sapid, **data}
+UNSATISFACTORY:
+- Vague replies
+- No specific reason
+- Defensive or dismissive tone
 
-    except Exception as e:
-        lower = reply_body.lower()
-        keywords = ["approved", "client", "visit", "medical", "travel", "ticket", "leave"]
-        verdict = "SATISFACTORY" if any(k in lower for k in keywords) else "UNSATISFACTORY"
-        return {
-            "emp_sapid": emp_sapid,
-            "verdict": verdict,
-            "reason": f"Heuristic fallback (LLM unavailable: {str(e)[:60]})",
-        }
+PENDING:
+- No reply yet
+- Awaiting more info
+
+Return ValidationVerdict JSON.
+"""
+
+mail_validator_agent = Agent(
+    name="Mail Validator Agent",
+    instructions=INSTRUCTIONS,
+    model=settings.OPENAI_MODEL,
+    output_type=ValidationVerdict,
+)
