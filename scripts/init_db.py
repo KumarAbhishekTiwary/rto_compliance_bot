@@ -1,22 +1,23 @@
+"""Initialize the SQLite database from schema.sql"""
 import sqlite3
-import os
 import sys
+from pathlib import Path
 
-sys.stdout.reconfigure(encoding='utf-8')
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.db.database import get_connection, get_db_path
+from app.config import settings
 
 def init_db():
-    schema_file = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "app", "db", "schema.sql")
-    )
-    conn = get_connection()
-    with open(schema_file, "r") as f:
-        conn.executescript(f.read())
+    schema_path = Path(__file__).resolve().parent.parent / "app" / "db" / "schema.sql"
+    with open(schema_path, "r") as f:
+        schema = f.read()
+
+    conn = sqlite3.connect(settings.DB_PATH)
+    conn.executescript(schema)
     conn.commit()
     conn.close()
-    print(f"✅ Database initialized at: {get_db_path()}")
+    print(f"✅ Database initialized at: {settings.DB_PATH}")
 
 if __name__ == "__main__":
     init_db()
