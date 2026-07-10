@@ -3,221 +3,543 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>RTO Compliance Chat</title>
+<title>RTO Compliance Workspace</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
-  body { display: flex; height: 100vh; background: #f3f2f1; }
+  :root {
+    --nav: #243447;
+    --nav-2: #2f4056;
+    --surface: #ffffff;
+    --page: #f5f7fa;
+    --line: #d9e0e8;
+    --text: #1d2733;
+    --muted: #667487;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --warn-bg: #fff7df;
+    --warn: #8a5a00;
+    --ok-bg: #eaf7ef;
+    --ok: #17633a;
+    --danger: #b42318;
+  }
 
-  /* Sidebar */
-  #sidebar { width: 260px; background: #464775; color: #fff; display: flex; flex-direction: column; }
-  #sidebar-header { padding: 16px; font-size: 18px; font-weight: 700; border-bottom: 1px solid #5b5c8a; }
-  #user-info { padding: 10px 16px; font-size: 12px; color: #c8c6c4; border-bottom: 1px solid #5b5c8a; }
-  #channel-list { flex: 1; overflow-y: auto; padding: 8px 0; }
-  .channel-item { padding: 8px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-  .channel-item:hover, .channel-item.active { background: #6264a7; }
-  .channel-item .ch-name { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .badge { font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600; }
-  .badge-active { background: #f8d22a; color: #333; }
-  .badge-resolved { background: #92c353; color: #fff; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    height: 100vh;
+    background: var(--page);
+    color: var(--text);
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) 1fr;
+    font-family: "Segoe UI", Arial, sans-serif;
+    letter-spacing: 0;
+  }
 
-  /* Main */
-  #main { flex: 1; display: flex; flex-direction: column; }
-  #channel-header { background: #fff; padding: 12px 20px; border-bottom: 1px solid #e1dfdd; display: flex; align-items: center; gap: 12px; }
-  #channel-title { font-size: 16px; font-weight: 600; }
-  #violation-banner { padding: 8px 20px; font-size: 13px; font-weight: 500; display: none; }
-  .banner-open { background: #fff4ce; color: #7a5c00; border-bottom: 2px solid #f8d22a; }
-  .banner-resolved { background: #dff6dd; color: #1e6e1e; border-bottom: 2px solid #92c353; }
+  button, select, textarea { font: inherit; }
 
-  #messages { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { display: flex; gap: 10px; align-items: flex-start; }
-  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; flex-shrink: 0; }
-  .av-employee { background: #e97548; }
-  .av-rm        { background: #0078d4; }
-  .av-slm       { background: #8764b8; }
-  .av-hr        { background: #038387; }
-  .av-bot       { background: #6264a7; }
-  .msg-content { background: #fff; border-radius: 8px; padding: 8px 12px; max-width: 70%; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .msg-meta { font-size: 11px; color: #888; margin-bottom: 4px; }
-  .msg-body { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-  .verdict-sat { color: #1e6e1e; font-weight: 600; }
-  .verdict-unsat { color: #a4262c; font-weight: 600; }
+  #sidebar {
+    background: var(--nav);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid rgba(255,255,255,.08);
+  }
+  #sidebar-header {
+    padding: 18px 18px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.12);
+  }
+  #sidebar-header h1 {
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  #sidebar-header p {
+    color: #b7c5d8;
+    font-size: 12px;
+    margin-top: 6px;
+  }
+  #user-info {
+    padding: 12px 18px;
+    color: #d7e1ee;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(255,255,255,.1);
+    min-height: 42px;
+  }
+  #channel-tools {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+  #channel-search {
+    width: 100%;
+    border: 1px solid rgba(255,255,255,.18);
+    background: var(--nav-2);
+    color: #fff;
+    border-radius: 6px;
+    padding: 9px 10px;
+    outline: none;
+  }
+  #channel-search::placeholder { color: #b7c5d8; }
+  #channel-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .channel-item {
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 10px;
+    cursor: pointer;
+    display: grid;
+    gap: 5px;
+    margin-bottom: 6px;
+  }
+  .channel-item:hover { background: rgba(255,255,255,.08); }
+  .channel-item.active {
+    background: #fff;
+    color: var(--text);
+    border-color: #c8d4e3;
+  }
+  .channel-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .ch-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 650;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ch-preview {
+    color: #b7c5d8;
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .channel-item.active .ch-preview { color: var(--muted); }
+  .badge {
+    font-size: 10px;
+    line-height: 1;
+    padding: 5px 7px;
+    border-radius: 999px;
+    font-weight: 700;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  .badge-active { background: #fff1bf; color: #7a4d00; }
+  .badge-email { background: #ffe1de; color: #9f1f17; }
+  .badge-resolved { background: #dff3e6; color: var(--ok); }
 
-  #composer { background: #fff; border-top: 1px solid #e1dfdd; padding: 12px 20px; display: flex; gap: 10px; }
-  #msg-input { flex: 1; border: 1px solid #c8c6c4; border-radius: 6px; padding: 8px 12px; font-size: 14px; resize: none; height: 40px; max-height: 120px; overflow-y: auto; }
-  #msg-input:focus { outline: none; border-color: #6264a7; }
-  #send-btn { background: #6264a7; color: #fff; border: none; border-radius: 6px; padding: 8px 18px; cursor: pointer; font-size: 14px; }
-  #send-btn:hover { background: #464775; }
-  #send-btn:disabled { background: #c8c6c4; cursor: not-allowed; }
+  #main {
+    min-width: 0;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    height: 100vh;
+  }
+  #channel-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 22px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  #channel-title {
+    font-size: 16px;
+    font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #channel-subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 3px;
+  }
+  #violation-banner {
+    display: none;
+    padding: 10px 22px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .banner-open { background: var(--warn-bg); color: var(--warn); }
+  .banner-resolved { background: var(--ok-bg); color: var(--ok); }
 
-  /* Login modal */
-  #login-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
-  #login-box { background: #fff; border-radius: 12px; padding: 32px; width: 380px; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
-  #login-box h2 { margin-bottom: 8px; color: #464775; }
-  #login-box p { color: #666; font-size: 13px; margin-bottom: 20px; }
-  #user-select { width: 100%; padding: 10px; border: 1px solid #c8c6c4; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
-  #login-btn { width: 100%; background: #6264a7; color: #fff; border: none; border-radius: 6px; padding: 10px; font-size: 15px; cursor: pointer; }
-  #login-btn:hover { background: #464775; }
+  #messages {
+    overflow-y: auto;
+    padding: 20px 22px;
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .msg {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .msg.own {
+    flex-direction: row-reverse;
+  }
+  .avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 750;
+    font-size: 12px;
+    color: #fff;
+    flex: 0 0 34px;
+  }
+  .av-employee { background: #c2410c; }
+  .av-rm { background: #2563eb; }
+  .av-slm { background: #7c3aed; }
+  .av-hr { background: #0f766e; }
+  .av-bot { background: #475569; }
+  .msg-content {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    max-width: min(720px, 76%);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+  }
+  .msg.own .msg-content {
+    background: #eef4ff;
+    border-color: #c8dafc;
+  }
+  .msg-meta {
+    color: var(--muted);
+    font-size: 11px;
+    margin-bottom: 5px;
+  }
+  .msg-body {
+    font-size: 14px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg-reminder .msg-content {
+    border-left: 4px solid var(--accent);
+  }
+  .verdict-sat { color: var(--ok); font-weight: 700; }
+  .verdict-unsat { color: var(--danger); font-weight: 700; }
 
-  #no-channel { flex: 1; display: flex; align-items: center; justify-content: center; color: #888; font-size: 15px; }
-  #placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: #888; }
-  #placeholder h3 { margin-bottom: 8px; }
+  #composer {
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    padding: 12px 22px;
+    display: none;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  #msg-input {
+    flex: 1;
+    border: 1px solid #b9c4d1;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.35;
+    resize: none;
+    height: 44px;
+    max-height: 132px;
+    outline: none;
+  }
+  #msg-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+  }
+  #send-btn {
+    height: 44px;
+    min-width: 92px;
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+    border-radius: 8px;
+    padding: 0 16px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  #send-btn:hover { background: var(--accent-dark); }
+  #send-btn:disabled { background: #aab6c5; cursor: not-allowed; }
+
+  #placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--muted);
+    padding: 24px;
+    text-align: center;
+  }
+  #placeholder h2 {
+    color: var(--text);
+    font-size: 20px;
+  }
+  #login-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(18, 25, 38, .55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 18px;
+  }
+  #login-box {
+    background: var(--surface);
+    width: min(420px, 100%);
+    border-radius: 8px;
+    padding: 26px;
+    box-shadow: 0 22px 60px rgba(16, 24, 40, .28);
+  }
+  #login-box h2 { font-size: 20px; margin-bottom: 6px; }
+  #login-box p { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  #user-select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #b9c4d1;
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }
+  #login-btn {
+    width: 100%;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 11px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  #toast {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    background: #111827;
+    color: #fff;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: none;
+    max-width: 360px;
+  }
+
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 220px 1fr; }
+    #sidebar { min-height: 220px; }
+    #channel-list { display: flex; overflow-x: auto; overflow-y: hidden; padding: 8px; }
+    .channel-item { min-width: 240px; }
+    #main { height: calc(100vh - 220px); }
+    .msg-content { max-width: 84%; }
+    #composer { padding: 10px; }
+  }
 </style>
 </head>
 <body>
-
-<!-- Login Modal -->
 <div id="login-modal">
   <div id="login-box">
-    <h2>RTO Compliance Chat</h2>
-    <p>Select your account to continue</p>
+    <h2>RTO Compliance Workspace</h2>
+    <p>Select an account to view assigned compliance channels.</p>
     <select id="user-select"><option value="">Loading users...</option></select>
-    <button id="login-btn" onclick="doLogin()">Sign In</button>
+    <button id="login-btn" onclick="doLogin()">Sign in</button>
   </div>
 </div>
 
-<!-- Sidebar -->
-<div id="sidebar">
-  <div id="sidebar-header">💬 Compliance Chat</div>
+<aside id="sidebar">
+  <div id="sidebar-header">
+    <h1>Compliance Channels</h1>
+    <p>Teams-style follow-up for RTO violations</p>
+  </div>
   <div id="user-info">Not signed in</div>
+  <div id="channel-tools">
+    <input id="channel-search" type="search" placeholder="Filter channels"/>
+  </div>
   <div id="channel-list"></div>
-</div>
+</aside>
 
-<!-- Main -->
-<div id="main">
-  <div id="channel-header" style="display:none">
-    <div id="channel-title">Select a channel</div>
+<main id="main">
+  <header id="channel-header">
+    <div>
+      <div id="channel-title">Select a channel</div>
+      <div id="channel-subtitle"></div>
+    </div>
     <div id="header-badge"></div>
-  </div>
+  </header>
   <div id="violation-banner"></div>
-  <div id="placeholder">
-    <h3>Select a channel to start</h3>
-    <p>Channels appear after a compliance check is triggered</p>
-  </div>
-  <div id="messages" style="display:none"></div>
-  <div id="composer" style="display:none">
-    <textarea id="msg-input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)"></textarea>
+  <section id="placeholder">
+    <h2>No channel selected</h2>
+    <p>Choose a compliance channel from the sidebar after a check creates one.</p>
+  </section>
+  <section id="messages"></section>
+  <footer id="composer">
+    <textarea id="msg-input" placeholder="Reply with reason, dates, and approval reference"></textarea>
     <button id="send-btn" onclick="sendMessage()">Send</button>
-  </div>
-</div>
+  </footer>
+</main>
+<div id="toast"></div>
 
 <script>
 const API = '';
 let currentUser = null;
 let currentChannel = null;
+let channelsCache = [];
 let pollTimer = null;
 let lastMsgCount = 0;
 
-// Load users into login dropdown
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.style.display = 'block';
+  setTimeout(() => { toast.style.display = 'none'; }, 3200);
+}
+
 async function loadUsers() {
-  const res = await fetch(`${API}/api/v1/chat/users`);
-  const users = await res.json();
-  const sel = document.getElementById('user-select');
-  sel.innerHTML = '<option value="">-- Select your account --</option>';
-  users.forEach(u => {
-    const opt = document.createElement('option');
-    opt.value = JSON.stringify(u);
-    opt.textContent = `${u.name || u.email} (${u.role})`;
-    sel.appendChild(opt);
-  });
+  try {
+    const res = await fetch(`${API}/api/v1/chat/users`);
+    const payload = await res.json();
+    const users = payload.users || [];
+    const sel = document.getElementById('user-select');
+    sel.innerHTML = '<option value="">Select your account</option>';
+    users.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = JSON.stringify(u);
+      opt.textContent = `${u.name || u.email} (${u.role})`;
+      sel.appendChild(opt);
+    });
+  } catch (err) {
+    showToast(`Could not load users: ${err.message}`);
+  }
 }
 
 function doLogin() {
   const sel = document.getElementById('user-select');
-  if (!sel.value) return alert('Please select a user');
+  if (!sel.value) return showToast('Select a user first');
   currentUser = JSON.parse(sel.value);
   document.getElementById('login-modal').style.display = 'none';
-  document.getElementById('user-info').textContent = `${currentUser.name || currentUser.email} · ${currentUser.role}`;
+  document.getElementById('user-info').textContent = `${currentUser.name || currentUser.email} - ${currentUser.role}`;
   loadChannels();
-  setInterval(loadChannels, 2000);
+  setInterval(loadChannels, 2500);
 }
 
 async function loadChannels() {
   if (!currentUser) return;
-  const res = await fetch(`${API}/api/v1/chat/channels?user_email=${encodeURIComponent(currentUser.email)}`);
-  const channels = await res.json();
+  try {
+    const res = await fetch(`${API}/api/v1/chat/channels?user_email=${encodeURIComponent(currentUser.email)}`);
+    const payload = await res.json();
+    channelsCache = payload.channels || [];
+    renderChannels();
+  } catch (err) {
+    showToast(`Could not load channels: ${err.message}`);
+  }
+}
+
+function renderChannels() {
+  const query = document.getElementById('channel-search').value.trim().toLowerCase();
   const list = document.getElementById('channel-list');
   list.innerHTML = '';
-  channels.forEach(ch => {
+  const filtered = channelsCache.filter(ch => {
+    const haystack = `${ch.channel_name || ''} ${ch.channel_id || ''} ${ch.last_message || ''}`.toLowerCase();
+    return haystack.includes(query);
+  });
+  if (!filtered.length) {
+    list.innerHTML = '<div class="ch-preview" style="padding:10px">No channels found</div>';
+    return;
+  }
+  filtered.forEach(ch => {
+    const id = ch.channel_id;
+    const status = ch.status || 'ACTIVE';
     const div = document.createElement('div');
-    div.className = 'channel-item' + (currentChannel === ch.channel_ref ? ' active' : '');
-    div.onclick = () => openChannel(ch.channel_ref);
-    const badge = ch.status === 'RESOLVED'
-      ? '<span class="badge badge-resolved">RESOLVED</span>'
-      : '<span class="badge badge-active">ACTIVE</span>';
-    div.innerHTML = `<span class="ch-name"># ${ch.channel_ref}</span>${badge}`;
+    div.className = 'channel-item' + (currentChannel === id ? ' active' : '');
+    div.onclick = () => openChannel(id);
+    const badgeClass = status === 'RESOLVED' ? 'badge-resolved' : 'badge-active';
+    const preview = ch.last_message || 'No messages yet';
+    div.innerHTML = `
+      <div class="channel-top">
+        <span class="ch-name">${escapeHtml(ch.channel_name || id)}</span>
+        <span class="badge ${badgeClass}">${escapeHtml(status)}</span>
+      </div>
+      <div class="ch-preview">${escapeHtml(preview)}</div>`;
     list.appendChild(div);
   });
 }
 
-async function openChannel(channelRef) {
-  currentChannel = channelRef;
+async function openChannel(channelId) {
+  currentChannel = channelId;
   lastMsgCount = 0;
   if (pollTimer) clearInterval(pollTimer);
-
   document.getElementById('placeholder').style.display = 'none';
   document.getElementById('channel-header').style.display = 'flex';
   document.getElementById('messages').style.display = 'flex';
   document.getElementById('composer').style.display = 'flex';
-  document.getElementById('channel-title').textContent = channelRef;
-
-  await loadChannelInfo(channelRef);
-  await loadMessages(channelRef);
-  loadChannels();
-
+  await loadChannelInfo(channelId);
+  await loadMessages(channelId, true);
+  renderChannels();
   pollTimer = setInterval(async () => {
-    await loadMessages(channelRef);
-    await loadChannelInfo(channelRef);
-  }, 2000);
+    await loadMessages(channelId);
+    await loadChannelInfo(channelId);
+  }, 2500);
 }
 
-async function loadChannelInfo(channelRef) {
-  const res = await fetch(`${API}/api/v1/chat/channels/${channelRef}/info`);
+async function loadChannelInfo(channelId) {
+  const res = await fetch(`${API}/api/v1/chat/channels/${channelId}/info`);
   const info = await res.json();
+  const channel = info.channel || {};
+  const violation = info.violation;
   const banner = document.getElementById('violation-banner');
   const headerBadge = document.getElementById('header-badge');
-
-  if (info.violation) {
-    const v = info.violation;
+  document.getElementById('channel-title').textContent = channel.channel_name || channelId;
+  document.getElementById('channel-subtitle').textContent = `${(info.members || []).length} members`;
+  if (violation) {
+    const resolved = violation.status === 'RESET' || channel.status === 'RESOLVED';
     banner.style.display = 'block';
-    if (info.status === 'RESOLVED') {
-      banner.className = 'banner-resolved';
-      banner.textContent = `✅ RESOLVED — ${v.days_present}/${v.days_required} days (${v.policy_type})`;
-      headerBadge.innerHTML = '<span class="badge badge-resolved">RESOLVED</span>';
-    } else {
-      banner.className = 'banner-open';
-      banner.textContent = `⚠️ OPEN VIOLATION — ${v.days_present}/${v.days_required} required days (${v.policy_type})`;
-      headerBadge.innerHTML = '<span class="badge badge-active">ACTIVE</span>';
-    }
+    banner.className = resolved ? 'banner-resolved' : 'banner-open';
+    banner.textContent = resolved
+      ? `Resolved - ${violation.days_present}/${violation.days_required} days (${violation.period_type || violation.policy_type || 'policy'})`
+      : `Open violation - ${violation.days_present}/${violation.days_required} required days (${violation.period_type || violation.policy_type || 'policy'})`;
+    const label = violation.status === 'EMAIL_ESCALATED' ? 'EMAIL ESCALATED' : (resolved ? 'RESOLVED' : 'ACTIVE');
+    const badgeClass = resolved ? 'badge-resolved' : (violation.status === 'EMAIL_ESCALATED' ? 'badge-email' : 'badge-active');
+    headerBadge.innerHTML = `<span class="badge ${badgeClass}">${label}</span>`;
   } else {
     banner.style.display = 'none';
+    headerBadge.innerHTML = '';
   }
 }
 
-async function loadMessages(channelRef) {
-  const res = await fetch(`${API}/api/v1/chat/channels/${channelRef}/messages`);
-  const msgs = await res.json();
-  if (msgs.length === lastMsgCount) return;
+async function loadMessages(channelId, force = false) {
+  const res = await fetch(`${API}/api/v1/chat/channels/${channelId}/messages`);
+  const payload = await res.json();
+  const msgs = payload.messages || [];
+  if (!force && msgs.length === lastMsgCount) return;
   lastMsgCount = msgs.length;
-
   const container = document.getElementById('messages');
   container.innerHTML = '';
   msgs.forEach(m => {
     const role = (m.sender_role || 'BOT').toUpperCase();
     const avClass = {EMPLOYEE:'av-employee', RM:'av-rm', SLM:'av-slm', HR:'av-hr', BOT:'av-bot'}[role] || 'av-bot';
-    const initials = m.sender_email.substring(0, 2).toUpperCase();
-    const time = new Date(m.created_at + 'Z').toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-
+    const initials = role === 'BOT' ? 'BT' : (m.sender_email || role).substring(0, 2).toUpperCase();
+    const created = m.created_at ? new Date(`${m.created_at}Z`) : new Date();
+    const time = created.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    const isOwn = currentUser && m.sender_email === currentUser.email;
+    const type = (m.message_type || '').toUpperCase();
     let bodyClass = 'msg-body';
-    if (m.verdict === 'SATISFACTORY') bodyClass += ' verdict-sat';
-    else if (m.verdict === 'UNSATISFACTORY') bodyClass += ' verdict-unsat';
-
+    if (m.llm_verdict === 'SATISFACTORY') bodyClass += ' verdict-sat';
+    if (m.llm_verdict === 'UNSATISFACTORY') bodyClass += ' verdict-unsat';
     const div = document.createElement('div');
-    div.className = 'msg';
+    div.className = `msg ${isOwn ? 'own' : ''} ${type.includes('REMINDER') ? 'msg-reminder' : ''}`;
     div.innerHTML = `
-      <div class="avatar ${avClass}">${initials}</div>
+      <div class="avatar ${avClass}">${escapeHtml(initials)}</div>
       <div class="msg-content">
-        <div class="msg-meta">${m.sender_email} · ${role} · ${time}</div>
-        <div class="${bodyClass}">${escapeHtml(m.body)}</div>
+        <div class="msg-meta">${escapeHtml(m.sender_name || m.sender_email || role)} - ${role} - ${time}</div>
+        <div class="${bodyClass}">${escapeHtml(m.content || '')}</div>
       </div>`;
     container.appendChild(div);
   });
@@ -226,33 +548,48 @@ async function loadMessages(channelRef) {
 
 async function sendMessage() {
   const input = document.getElementById('msg-input');
-  const body = input.value.trim();
-  if (!body || !currentChannel || !currentUser) return;
-
+  const content = input.value.trim();
+  if (!content || !currentChannel || !currentUser) return;
   const btn = document.getElementById('send-btn');
   btn.disabled = true;
   input.value = '';
-
-  await fetch(`${API}/api/v1/chat/send`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      channel_ref: currentChannel,
-      sender_email: currentUser.email,
-      sender_role: currentUser.role,
-      body: body,
-    }),
-  });
-  btn.disabled = false;
-  await loadMessages(currentChannel);
+  try {
+    const res = await fetch(`${API}/api/v1/chat/send`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        channel_id: currentChannel,
+        sender_email: currentUser.email,
+        content,
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    await loadMessages(currentChannel, true);
+  } catch (err) {
+    showToast(`Message failed: ${err.message}`);
+    input.value = content;
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
 }
 
 document.getElementById('msg-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
 });
+document.getElementById('channel-search').addEventListener('input', renderChannels);
 
-function escapeHtml(t) {
-  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+    .replace(/\n/g, '<br>');
 }
 
 loadUsers();

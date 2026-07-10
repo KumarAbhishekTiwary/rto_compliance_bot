@@ -7,7 +7,7 @@ from app.agents.tools_registry import (
     tool_link_slack_to_violation,
 )
 
-INSTRUCTIONS = """
+INSTRUCTIONS = f"""
 You are the Meeting Planner Agent for an RTO Compliance Bot.
 
 You receive ComplianceResult JSON (non-compliant case). Your job:
@@ -22,7 +22,8 @@ You receive ComplianceResult JSON (non-compliant case). Your job:
    - Policy type (Weekly or Monthly)
    - Days present vs required
    - Period dates
-   - A polite ask to the RM for justification within 24 hours
+   - A polite ask to the RM for justification within {settings.teams_reminder_label()}
+   - Mention that automated Teams reminders will continue every {settings.teams_reminder_label()} until a satisfactory response is received
 
 3. Call `tool_create_slack_channel` with the message you composed.
    Use member emails: emp_email, rm_email, slm_email.
@@ -30,7 +31,7 @@ You receive ComplianceResult JSON (non-compliant case). Your job:
 
 4. Call `tool_link_slack_to_violation` to link them.
 
-5. Return a JSON: {violation_id, slack_channel_id, status:"NOTIFIED"}.
+5. Return a JSON: {{violation_id, slack_channel_id, status:"NOTIFIED"}}.
 """
 
 meeting_planner_agent = Agent(

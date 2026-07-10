@@ -1,33 +1,33 @@
-"""Pydantic schemas for agent structured outputs."""
+"""Shared structured output schemas for agents."""
 from pydantic import BaseModel, Field
-from typing import Literal
+
 
 class ComplianceResult(BaseModel):
-    """Output of Retrieval Agent."""
-    emp_sapid: str
-    emp_name: str
-    emp_email: str
-    rm_email: str
-    slm_email: str
-    hr_email: str
-    policy_type: str
-    period_start: str
-    period_end: str
-    days_present: int
-    days_required: int
-    is_compliant: bool
-    shortfall: int
+    emp_sapid: str = ""
+    emp_name: str = ""
+    emp_email: str = ""
+    rm_email: str = ""
+    slm_email: str = ""
+    hr_email: str = ""
+    policy_type: str = ""
+    period_start: str = ""
+    period_end: str = ""
+    days_present: int = 0
+    days_required: int = 0
+    is_compliant: bool = True
+    shortfall: int = 0
+    reason: str = ""
+
 
 class ValidationVerdict(BaseModel):
-    """Output of Chat / Mail Validator Agents."""
-    verdict: Literal["SATISFACTORY", "UNSATISFACTORY", "PENDING"]
-    justification: str = Field(description="Extracted justification text or empty string")
-    confidence: float = Field(ge=0.0, le=1.0)
-    reasoning: str = Field(description="Brief reasoning for the verdict")
+    verdict: str = Field(default="PENDING", pattern="^(SATISFACTORY|UNSATISFACTORY|PENDING)$")
+    justification: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    reasoning: str = ""
+
 
 class QueryResult(BaseModel):
-    """Output of Query Agent for chatbot."""
-    answer: str = Field(description="Human-readable answer")
-    sql_used: str = Field(description="SQL query that was executed")
-    row_count: int
-    success: bool
+    answer: str = ""
+    sql_used: str = ""
+    row_count: int = 0
+    success: bool = False

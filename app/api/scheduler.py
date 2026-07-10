@@ -5,7 +5,18 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.agents.orchestrator import run_compliance_check, trigger_email_escalation
 from app.tools.attendance import list_employees_for_check
-from app.tools.violation import get_sla_breached_violations, log_audit
+from app.tools.chat_tool import (
+    BOT_EMAIL,
+    build_justification_request_message,
+    post_message,
+)
+from app.tools.violation import (
+    get_sla_breached_violations,
+    get_teams_reminder_due_violations,
+    log_audit,
+    log_communication,
+    mark_teams_reminded,
+)
 from apscheduler.triggers.interval import IntervalTrigger
 
 scheduler = BackgroundScheduler()
@@ -41,16 +52,45 @@ def job_monthly_check():
             print(f"[Scheduler] Error for {sapid}: {e}")
 
 def job_sla_sweep():
-    """Every hour - find SLA-breached violations and escalate via email."""
+    """Find due initial/repeat SLA escalations and send email reminders."""
     breached = get_sla_breached_violations()
     if not breached:
         return
-    print(f"[Scheduler] SLA sweep: {len(breached)} breached")
+    print(f"[Scheduler] SLA sweep: {len(breached)} escalation(s) due")
     for v in breached:
         try:
             _run_async(trigger_email_escalation(v["violation_id"]))
         except Exception as e:
             print(f"[Scheduler] SLA escalation error: {e}")
+
+
+def job_teams_reminders():
+    """Post due Teams reminders asking for a pending justification."""
+    due = get_teams_reminder_due_violations()
+    if not due:
+        return
+    print(f"[Scheduler] Teams reminders: {len(due)} reminder(s) due")
+    for v in due:
+        try:
+            message = build_justification_request_message()
+            post_message(
+                v["slack_channel_id"],
+                BOT_EMAIL,
+                message,
+                message_type="BOT_REMINDER",
+                metadata={"violation_id": v["violation_id"]},
+            )
+            log_communication(
+                v["violation_id"],
+                "TEAMS",
+                "OUTBOUND",
+                BOT_EMAIL,
+                message,
+            )
+            mark_teams_reminded(v["violation_id"])
+        except Exception as e:
+            print(f"[Scheduler] Teams reminder error: {e}")
+
 
 def start_scheduler():
     scheduler.add_job(job_weekly_check, CronTrigger(day_of_week="mon", hour=6, minute=0),
@@ -62,6 +102,8 @@ def start_scheduler():
     
     scheduler.add_job(job_sla_sweep, IntervalTrigger(seconds=30),
                     id="sla_sweep", replace_existing=True)
+    scheduler.add_job(job_teams_reminders, IntervalTrigger(seconds=30),
+                    id="teams_reminders", replace_existing=True)
 
     scheduler.start()
     print("✅ Scheduler started: weekly (Mon 06:00), monthly (1st 06:00), SLA hourly")

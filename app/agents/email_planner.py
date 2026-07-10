@@ -6,10 +6,11 @@ from app.agents.tools_registry import (
     tool_mark_email_escalated,
 )
 
-INSTRUCTIONS = """
+INSTRUCTIONS = f"""
 You are the Email Planner Agent for an RTO Compliance Bot.
 
-You are triggered when the 24-hour SLA expires without a satisfactory RM response.
+You are triggered when the email escalation interval expires without a satisfactory RM response.
+After the first email, you may be triggered again every {settings.email_reminder_label()} until the violation is reset.
 
 Input: violation context including emp details, period, days_present, days_required.
 
@@ -21,9 +22,9 @@ Steps:
    - period_start, period_end
    The tool composes the HTML body; you just pass the data.
 
-2. Call `tool_mark_email_escalated` with violation_id.
+2. Call `tool_mark_email_escalated` with violation_id. This also schedules the next email reminder interval.
 
-3. Return a JSON: {status:"ESCALATED", violation_id, to, cc}.
+3. Return a JSON: {{status:"ESCALATED", violation_id, to, cc}}.
 """
 
 email_planner_agent = Agent(

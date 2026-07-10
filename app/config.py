@@ -25,7 +25,24 @@ class Settings:
     # App
     APP_PORT: int = int(os.getenv("APP_PORT", "8000"))
     SLA_HOURS: int = int(os.getenv("SLA_HOURS", "24"))
-    SLA_MINUTES: int = int(os.getenv("SLA_MINUTES", "2"))  # 0 = use SLA_HOURS
+    SLA_MINUTES: int = int(os.getenv("SLA_MINUTES", "0"))  # Test/demo override; 0 = use SLA_HOURS
+    TEAMS_REMINDER_HOURS: int = int(os.getenv("TEAMS_REMINDER_HOURS", os.getenv("SLA_HOURS", "24")))
+    TEAMS_REMINDER_MINUTES: int = int(os.getenv("TEAMS_REMINDER_MINUTES", os.getenv("SLA_MINUTES", "0")))
+    EMAIL_REMINDER_HOURS: int = int(os.getenv("EMAIL_REMINDER_HOURS", os.getenv("SLA_HOURS", "24")))
+    EMAIL_REMINDER_MINUTES: int = int(os.getenv("EMAIL_REMINDER_MINUTES", os.getenv("SLA_MINUTES", "0")))
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+    def _interval_label(self, minutes: int, hours: int) -> str:
+        if minutes > 0:
+            unit = "minute" if minutes == 1 else "minutes"
+            return f"{minutes} {unit}"
+        unit = "hour" if hours == 1 else "hours"
+        return f"{hours} {unit}"
+
+    def teams_reminder_label(self) -> str:
+        return self._interval_label(self.TEAMS_REMINDER_MINUTES, self.TEAMS_REMINDER_HOURS)
+
+    def email_reminder_label(self) -> str:
+        return self._interval_label(self.EMAIL_REMINDER_MINUTES, self.EMAIL_REMINDER_HOURS)
 
 settings = Settings()

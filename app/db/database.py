@@ -10,6 +10,10 @@ def get_connection():
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
+def get_db_path() -> str:
+    """Return the configured SQLite database path."""
+    return settings.DB_PATH
+
 @contextmanager
 def db_cursor():
     """Context manager for cursor with auto-commit / rollback."""

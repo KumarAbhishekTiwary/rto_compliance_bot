@@ -6,9 +6,19 @@ import uuid
 import json
 from datetime import datetime
 from app.db.database import db_cursor
+from app.config import settings
 
 BOT_EMAIL = "rto-bot@compliance.local"
 BOT_NAME = "RTO Compliance Bot"
+
+
+def build_justification_request_message() -> str:
+    return (
+        "Action required: RM/SLM, please reply in this channel with the business "
+        "justification for this RTO non-compliance. Include the reason, dates, "
+        "and any approval reference. I will keep reminding this channel every "
+        f"{settings.teams_reminder_label()} until a satisfactory response is received."
+    )
 
 
 def create_compliance_channel(emp_email: str, rm_email: str, slm_email: str,
@@ -46,11 +56,21 @@ def create_compliance_channel(emp_email: str, rm_email: str, slm_email: str,
         """, (message_id, channel_id, BOT_EMAIL, "BOT", BOT_NAME,
               violation_summary))
 
+        reminder_message_id = f"MSG-{uuid.uuid4().hex[:10].upper()}"
+        cur.execute("""
+            INSERT INTO messages
+            (message_id, channel_id, sender_email, sender_role, sender_name,
+             content, message_type)
+            VALUES (?, ?, ?, ?, ?, ?, 'BOT_REMINDER')
+        """, (reminder_message_id, channel_id, BOT_EMAIL, "BOT", BOT_NAME,
+              build_justification_request_message()))
+
     return {
         "slack_channel_id": channel_id,
         "channel_id": channel_id,
         "channel_name": channel_name,
         "message_ts": message_id,
+        "reminder_message_ts": reminder_message_id,
         "members_invited": [emp_email, rm_email, slm_email],
     }
 

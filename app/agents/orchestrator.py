@@ -12,10 +12,16 @@ from agents import Runner
 from app.agents.retrieval import retrieval_agent
 from app.agents.meeting_planner import meeting_planner_agent
 from app.agents.chat_validator import chat_validator_agent
-from app.agents.email_planner import email_planner_agent
 from app.agents.mail_validator import mail_validator_agent
 from app.agents.reset import reset_agent
-from app.tools.violation import log_audit, get_violation
+from app.tools import email_tool
+from app.tools.violation import (
+    log_audit,
+    get_violation,
+    is_sla_breached,
+    log_communication,
+    mark_email_escalated,
+)
 
 async def run_compliance_check(emp_sapid: str, policy_type: str = "") -> dict:
     """
@@ -51,7 +57,7 @@ async def run_compliance_check(emp_sapid: str, policy_type: str = "") -> dict:
     }
 
 async def validate_chat_reply(violation_id: str, chat_history: str) -> dict:
-    """Called by Slack webhook when a new RM message arrives."""
+    """Called by Teams chat webhook when a new RM message arrives."""
     result = await Runner.run(chat_validator_agent, chat_history)
     verdict = result.final_output  # ValidationVerdict
 
@@ -72,33 +78,61 @@ async def validate_chat_reply(violation_id: str, chat_history: str) -> dict:
             "violation_id": violation_id}
 
 async def trigger_email_escalation(violation_id: str) -> dict:
-    """Called by SLA timer when 24h elapses without satisfactory chat verdict."""
+    """Called by SLA sweep when an initial or repeat email escalation is due."""
     vio = get_violation(violation_id)
     if not vio:
         return {"error": f"Violation {violation_id} not found"}
+    if not is_sla_breached(violation_id):
+        return {
+            "violation_id": violation_id,
+            "status": "SKIPPED",
+            "reason": "Email escalation interval is not due or violation is already reset",
+            "current_status": vio.get("status"),
+            "sla_due_at": vio.get("sla_due_at"),
+            "next_email_due_at": vio.get("next_email_due_at"),
+        }
 
     # Get employee details for the email
     from app.tools.attendance import fetch_attendance_summary
     emp = fetch_attendance_summary(vio["emp_sapid"], vio["period_type"])
 
-    input_data = {
-        "violation_id": violation_id,
-        "rm_email": emp["rm_email"],
-        "slm_email": emp["slm_email"],
-        "hr_email": emp["hr_email"],
-        "emp_name": emp["emp_name"],
-        "emp_sapid": emp["emp_sapid"],
-        "period_type": vio["period_type"],
-        "period_start": vio["period_start"],
-        "period_end": vio["period_end"],
-        "days_present": vio["days_present"],
-        "days_required": vio["days_required"],
-    }
-    result = await Runner.run(email_planner_agent, json.dumps(input_data))
+    html = email_tool.build_escalation_html(
+        emp_name=emp["emp_name"],
+        emp_sapid=emp["emp_sapid"],
+        period_type=vio["period_type"],
+        days_present=vio["days_present"],
+        days_required=vio["days_required"],
+        period_start=vio["period_start"],
+        period_end=vio["period_end"],
+    )
+    subject = (
+        f"[RTO ESCALATION] {emp['emp_name']} ({emp['emp_sapid']}) - "
+        f"{vio['period_type']} non-compliance"
+    )
+    result = email_tool.send_escalation_email(
+        to=[emp["rm_email"], emp["slm_email"]],
+        cc=[emp["hr_email"]] if emp.get("hr_email") else [],
+        subject=subject,
+        html_body=html,
+    )
+    if result.get("status") not in ("sent", "mock-sent"):
+        log_audit(emp["emp_sapid"], "EMAIL_ESCALATION_FAILED", "SYSTEM",
+                  f"violation_id={violation_id}, result={result}")
+        return {"violation_id": violation_id, "status": "EMAIL_FAILED",
+                "result": result}
+
+    mark_email_escalated(violation_id)
+    log_communication(
+        violation_id,
+        "EMAIL",
+        "OUTBOUND",
+        "SYSTEM",
+        subject,
+    )
     log_audit(emp["emp_sapid"], "EMAIL_ESCALATED", "SYSTEM",
               f"violation_id={violation_id}")
     return {"violation_id": violation_id, "status": "EMAIL_ESCALATED",
-            "result": str(result.final_output)}
+            "result": result}
 
 async def validate_mail_reply(violation_id: str, email_thread: str) -> dict:
     """Called by IMAP poller when a new email reply arrives."""

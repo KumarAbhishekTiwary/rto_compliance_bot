@@ -14,9 +14,9 @@ from app.tools.chat_tool import (
 from app.tools.violation import log_communication
 from app.agents.orchestrator import validate_chat_reply
 from app.db.database import db_cursor
+from app.config import settings
 
 router = APIRouter()
-
 
 class SendMessageRequest(BaseModel):
     channel_id: str
@@ -95,7 +95,7 @@ async def _validate_and_respond(violation_id: str, channel_id: str,
             bot_msg = (
                 "⚠️ The justification does not meet our criteria. "
                 "Please provide more specific details (business reason, dates, "
-                "approval references). If unresolved within 24 hours, this will "
+                f"approval references). If unresolved within {settings.email_reminder_label()}, this will "
                 "be escalated via email to SLM and HR."
             )
             metadata = {"verdict": "UNSATISFACTORY",
