@@ -7,9 +7,9 @@ import streamlit as st
 
 
 API_BASE = os.getenv("API_BASE", "http://localhost:8000/api/v1")
-LOGO_PATH = Path(__file__).resolve().parent / "assests" / "team_logo.jfif"
+LOGO_PATH = Path(__file__).resolve().parent / "assests" / "logo.png"
 LOGO_DATA_URL = (
-    f"data:image/jpeg;base64,{base64.b64encode(LOGO_PATH.read_bytes()).decode('ascii')}"
+    f"data:image/png;base64,{base64.b64encode(LOGO_PATH.read_bytes()).decode('ascii')}"
     if LOGO_PATH.exists()
     else ""
 )
@@ -58,9 +58,6 @@ st.markdown(
       [data-testid="stSidebar"] [data-testid="stCaptionContainer"] { color: #ffffff; }
       h1, h2, h3, p, label { color: var(--text); }
       .hero {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
         padding: 1.4rem 1.6rem;
         margin-bottom: 1rem;
         border: 0;
@@ -70,15 +67,17 @@ st.markdown(
       }
       .hero h1 { margin: 0; font-size: 2rem; color: #ffffff; }
       .hero p { margin: .45rem 0 0; color: #eef2ff; }
-      .hero-logo {
-        width: 72px;
-        height: 72px;
-        flex: 0 0 72px;
+      .toolbar-logo {
+        position: fixed;
+        top: .35rem;
+        right: 4.5rem;
+        z-index: 999999;
+        width: 40px;
+        height: 40px;
         object-fit: contain;
-        border-radius: 14px;
-        background: #ffffff;
-        padding: 6px;
-        box-shadow: 0 8px 22px rgba(30, 27, 75, .25);
+      }
+      @media (max-width: 640px) {
+        .toolbar-logo { right: 3.5rem; width: 34px; height: 34px; }
       }
       [data-testid="stMetric"] {
         background: var(--panel);
@@ -250,14 +249,17 @@ with st.sidebar:
                 st.session_state.email = email.strip()
                 authenticate(email)
 
+if LOGO_DATA_URL:
+    st.markdown(
+        f'<img class="toolbar-logo" src="{LOGO_DATA_URL}" alt="Team logo">',
+        unsafe_allow_html=True,
+    )
+
 st.markdown(
     f"""
     <div class="hero">
-      {f'<img class="hero-logo" src="{LOGO_DATA_URL}" alt="Team logo">' if LOGO_DATA_URL else ''}
-      <div>
-        <h1>RTO Compliance</h1>
-        <p>Monitor attendance, investigate violations, and explore compliance insights in one place.</p>
-      </div>
+      <h1>RTO Compliance</h1>
+      <p>Monitor attendance, investigate violations, and explore compliance insights in one place.</p>
     </div>
     """,
     unsafe_allow_html=True,
