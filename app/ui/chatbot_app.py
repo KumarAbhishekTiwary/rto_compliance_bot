@@ -67,17 +67,26 @@ st.markdown(
       }
       .hero h1 { margin: 0; font-size: 2rem; color: #ffffff; }
       .hero p { margin: .45rem 0 0; color: #eef2ff; }
-      .toolbar-logo {
+      .toolbar-logo-shell {
         position: fixed;
-        top: .35rem;
-        right: 4.5rem;
+        top: .2rem;
+        left: 3.8rem;
         z-index: 999999;
-        width: 40px;
-        height: 40px;
+        width: 190px;
+        height: 52px;
+        overflow: hidden;
+      }
+      .toolbar-logo {
+        position: absolute;
+        top: -11px;
+        left: 0;
+        width: auto;
+        height: 74px;
         object-fit: contain;
       }
       @media (max-width: 640px) {
-        .toolbar-logo { right: 3.5rem; width: 34px; height: 34px; }
+        .toolbar-logo-shell { left: 3.2rem; width: 145px; height: 46px; }
+        .toolbar-logo { top: -9px; height: 64px; }
       }
       [data-testid="stMetric"] {
         background: var(--panel);
@@ -251,7 +260,8 @@ with st.sidebar:
 
 if LOGO_DATA_URL:
     st.markdown(
-        f'<img class="toolbar-logo" src="{LOGO_DATA_URL}" alt="Team logo">',
+        f'<div class="toolbar-logo-shell"><img class="toolbar-logo" '
+        f'src="{LOGO_DATA_URL}" alt="Team logo"></div>',
         unsafe_allow_html=True,
     )
 
