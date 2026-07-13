@@ -1,5 +1,6 @@
 """Query tool for chatbot - NL→SQL with safety enforcement."""
 import re
+from difflib import SequenceMatcher
 from app.db.database import db_cursor
 
 ALLOWED_TABLES = {"employees", "attendance", "violations", "communication_log", "audit_log"}
@@ -61,3 +62,62 @@ def check_authorization(user_email: str) -> dict:
         """, (user_email,))
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+def resolve_employee_reference(question: str, limit: int = 5) -> dict:
+    """Resolve exact, partial, or slightly misspelled employee references."""
+    normalized_question = " ".join(re.findall(r"[a-z0-9]+", question.lower()))
+    question_tokens = set(normalized_question.split())
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT emp_sapid, emp_name, emp_email
+            FROM employees
+            WHERE active = 1
+            ORDER BY emp_name, emp_sapid
+        """)
+        employees = [dict(row) for row in cur.fetchall()]
+
+    # Employee code or email is an explicit, unique selection.
+    for employee in employees:
+        sapid = employee["emp_sapid"].lower()
+        email = (employee.get("emp_email") or "").lower()
+        if re.search(rf"\b{re.escape(sapid)}\b", question.lower()) or (
+            email and email in question.lower()
+        ):
+            return {"status": "resolved", "employee": employee, "matches": [employee]}
+
+    full_matches = []
+    scored_matches = []
+    for employee in employees:
+        normalized_name = " ".join(re.findall(r"[a-z0-9]+", employee["emp_name"].lower()))
+        if normalized_name and normalized_name in normalized_question:
+            full_matches.append(employee)
+            continue
+
+        name_tokens = [token for token in normalized_name.split() if len(token) >= 3]
+        token_scores = [
+            max(
+                (SequenceMatcher(None, name_token, word).ratio() for word in question_tokens),
+                default=0.0,
+            )
+            for name_token in name_tokens
+        ]
+        best_score = max(token_scores, default=0.0)
+        if best_score >= 0.84:
+            scored_matches.append((best_score, employee))
+
+    matches = full_matches or [
+        employee for _, employee in sorted(
+            scored_matches,
+            key=lambda item: (-item[0], item[1]["emp_name"], item[1]["emp_sapid"]),
+        )
+    ]
+    if not matches:
+        return {"status": "none", "matches": []}
+    if len(matches) == 1:
+        return {"status": "resolved", "employee": matches[0], "matches": matches}
+    return {
+        "status": "ambiguous",
+        "matches": matches[:limit],
+        "total_matches": len(matches),
+    }
