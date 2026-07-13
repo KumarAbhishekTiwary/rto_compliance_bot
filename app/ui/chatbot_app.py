@@ -46,7 +46,7 @@ st.markdown(
         --green: #059669;
       }
       .stApp { background: var(--background); color: var(--text); }
-      .block-container { padding-top: 1.4rem; max-width: 1180px; }
+      .block-container { position: relative; padding-top: 1.4rem; max-width: 1180px; }
       [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1e40af 0%, #4f46e5 52%, #6d28d9 100%);
         border-right: 0;
@@ -68,9 +68,9 @@ st.markdown(
       .hero h1 { margin: 0; font-size: 2rem; color: #ffffff; }
       .hero p { margin: .45rem 0 0; color: #eef2ff; }
       .toolbar-logo-shell {
-        position: fixed;
-        top: .2rem;
-        left: 3.8rem;
+        position: absolute;
+        top: -2.7rem;
+        left: 0;
         z-index: 999999;
         width: 190px;
         height: 52px;
@@ -85,7 +85,7 @@ st.markdown(
         object-fit: contain;
       }
       @media (max-width: 640px) {
-        .toolbar-logo-shell { left: 3.2rem; width: 145px; height: 46px; }
+        .toolbar-logo-shell { left: 0; width: 145px; height: 46px; }
         .toolbar-logo { top: -9px; height: 64px; }
       }
       [data-testid="stMetric"] {
