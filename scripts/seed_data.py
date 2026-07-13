@@ -16,7 +16,10 @@ EMPLOYEES = [
     ("E004", "David Brown",    "david@example.com",  "rm2@example.com", "slm2@example.com", "MONTHLY", 12),
     ("E005", "Eve Davis",      "eve@example.com",    "rm1@example.com", "slm2@example.com", "WEEKLY",  3),
     ("E006", "Frank Miller",   "frank@example.com",  "rm2@example.com", "slm2@example.com", "WEEKLY",  3),
+    ("E007", "Manohar Bediya", "pandahai477@gmail.com", "abhitiwary0001@gmail.com", "slm2@example.com", "WEEKLY", 3),
 ]
+
+ALWAYS_NON_COMPLIANT = {"E007"}
 
 AUTHORIZED_USERS = [
     ("hr@example.com",         "HR"),
@@ -51,7 +54,9 @@ def seed():
             d = today - timedelta(days=i)
             if d.weekday() >= 5:  # skip weekends
                 continue
-            if compliant:
+            if emp_sapid in ALWAYS_NON_COMPLIANT:
+                present = 0
+            elif compliant:
                 present = 1 if random.random() < 0.85 else 0
             else:
                 present = 1 if random.random() < 0.35 else 0

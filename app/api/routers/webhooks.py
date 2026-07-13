@@ -48,6 +48,9 @@ async def slack_webhook(payload: SlackEvent):
 class MailEvent(BaseModel):
     violation_id: str
     email_thread: str
+    sender_email: str = ""
+    subject: str = ""
+    message_id: str = ""
 
 @router.post("/webhooks/email_reply")
 async def email_reply_webhook(payload: MailEvent):
@@ -55,5 +58,8 @@ async def email_reply_webhook(payload: MailEvent):
     Manual / IMAP-poller webhook for incoming email replies.
     Pass the thread text + violation_id and we validate.
     """
-    verdict = await validate_mail_reply(payload.violation_id, payload.email_thread)
+    verdict = await validate_mail_reply(
+        payload.violation_id, payload.email_thread, payload.sender_email,
+        payload.subject, payload.message_id,
+    )
     return {"ok": True, "verdict": verdict}

@@ -48,13 +48,13 @@ def tool_link_slack_to_violation(violation_id: str, slack_channel_id: str) -> st
 
 # ---------- Email Planner ----------
 @function_tool
-def tool_send_escalation_email(rm_email: str, slm_email: str, hr_email: str,
+def tool_send_escalation_email(emp_email: str, rm_email: str, slm_email: str, hr_email: str,
                                emp_name: str, emp_sapid: str, period_type: str,
                                days_present: int, days_required: int,
                                period_start: str, period_end: str) -> dict:
     """
     Send an escalation email via SMTP.
-    To: RM + SLM, CC: HR.
+    To: RM + SLM, CC: Employee + HR.
     """
     html = email_tool.build_escalation_html(
         emp_name, emp_sapid, period_type, days_present, days_required,
@@ -62,7 +62,8 @@ def tool_send_escalation_email(rm_email: str, slm_email: str, hr_email: str,
     )
     subject = f"[RTO ESCALATION] {emp_name} ({emp_sapid}) - {period_type} non-compliance"
     return email_tool.send_escalation_email(
-        to=[rm_email, slm_email], cc=[hr_email],
+        to=[rm_email, slm_email],
+        cc=[address for address in (emp_email, hr_email) if address],
         subject=subject, html_body=html
     )
 

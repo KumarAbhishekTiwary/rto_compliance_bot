@@ -16,7 +16,7 @@ Input: violation context including emp details, period, days_present, days_requi
 
 Steps:
 1. Call `tool_send_escalation_email` with:
-   - rm_email, slm_email, hr_email
+   - emp_email, rm_email, slm_email, hr_email
    - emp_name, emp_sapid, period_type
    - days_present, days_required
    - period_start, period_end

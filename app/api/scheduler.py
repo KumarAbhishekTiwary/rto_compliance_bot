@@ -3,7 +3,12 @@ import asyncio
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.agents.orchestrator import run_compliance_check, trigger_email_escalation
+from app.agents.orchestrator import (
+    run_compliance_check,
+    trigger_email_escalation,
+    validate_mail_reply,
+)
+from app.config import settings
 from app.tools.attendance import list_employees_for_check
 from app.tools.chat_tool import (
     BOT_EMAIL,
@@ -17,6 +22,7 @@ from app.tools.violation import (
     log_communication,
     mark_teams_reminded,
 )
+from app.tools.email_inbox import poll_email_replies
 from apscheduler.triggers.interval import IntervalTrigger
 
 scheduler = BackgroundScheduler()
@@ -92,6 +98,24 @@ def job_teams_reminders():
             print(f"[Scheduler] Teams reminder error: {e}")
 
 
+def job_email_replies():
+    """Poll Gmail for replies to RTO escalation threads."""
+    def handle(**reply):
+        result = _run_async(validate_mail_reply(**reply))
+        log_audit(
+            None, "EMAIL_REPLY_RECEIVED", reply["sender_email"],
+            reply["in_reply_to"],
+        )
+        return result
+
+    try:
+        results = poll_email_replies(handle)
+        if results:
+            print(f"[Scheduler] Processed {len(results)} email reply/replies")
+    except Exception as e:
+        print(f"[Scheduler] Email polling error: {e}")
+
+
 def start_scheduler():
     scheduler.add_job(job_weekly_check, CronTrigger(day_of_week="mon", hour=6, minute=0),
                       id="weekly_check", replace_existing=True)
@@ -104,6 +128,8 @@ def start_scheduler():
                     id="sla_sweep", replace_existing=True)
     scheduler.add_job(job_teams_reminders, IntervalTrigger(seconds=30),
                     id="teams_reminders", replace_existing=True)
+    scheduler.add_job(job_email_replies, IntervalTrigger(seconds=settings.EMAIL_POLL_SECONDS),
+                    id="email_replies", replace_existing=True)
 
     scheduler.start()
     print("✅ Scheduler started: weekly (Mon 06:00), monthly (1st 06:00), SLA hourly")
