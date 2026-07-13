@@ -69,7 +69,7 @@ st.markdown(
       .hero p { margin: .45rem 0 0; color: #eef2ff; }
       .toolbar-logo-shell {
         position: absolute;
-        top: -2.7rem;
+        top: -2.3rem;
         left: 0;
         z-index: 999999;
         width: 190px;
